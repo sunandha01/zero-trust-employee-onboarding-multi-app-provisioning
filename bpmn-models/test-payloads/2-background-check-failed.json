@@ -1,0 +1,16 @@
+{
+  "processDefinitionId": "employee-onboarding",
+  "variables": {
+    "employeeId": "EMP-9002",
+    "fullName": "Ravi Kumar",
+    "email": "ravi.kumar@example.com",
+    "department": "Platform",
+    "jobTitle": "DevOps Engineer",
+    "managerEmail": "manager.two@example.com",
+    "startDate": "2026-12-08",
+    "requestedApps": ["GITHUB", "AWS"],
+    "hardware": { "laptopModel": "ThinkPad X1 Carbon", "accessories": ["Docking station"] },
+    "shippingAddress": "45 Sample Road, Bengaluru 560001",
+    "verificationSla": "P3D"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "processDefinitionId": "employee-onboarding",
+  "variables": {
+    "employeeId": "1003",
+    "fullName": "Meera Nair",
+    "email": "meera.nair-at-example.com",
+    "department": "Design",
+    "jobTitle": "Product Designer",
+    "managerEmail": "manager.three@example.com",
+    "startDate": "2026-12-15",
+    "requestedApps": ["FIGMA"],
+    "hardware": { "laptopModel": "MacBook Air 13", "accessories": [] },
+    "shippingAddress": "7 Demo Lane, Kochi 682001"
+  }
+}

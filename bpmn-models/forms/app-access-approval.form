@@ -1,0 +1,32 @@
+{
+  "components": [
+    {
+      "text": "# Access approval: {{app}}\n\n**New hire:** {{fullName}} ({{employeeId}})\n\n**Role:** {{jobTitle}}, {{department}}\n\n**Username to create:** {{username}}\n\n**Start date:** {{startDate}}",
+      "id": "Text_Summary",
+      "type": "text"
+    },
+    {
+      "label": "Decision",
+      "values": [
+        { "label": "Approve access", "value": "APPROVED" },
+        { "label": "Reject access", "value": "REJECTED" }
+      ],
+      "id": "Field_ApprovalDecision",
+      "type": "radio",
+      "key": "approvalDecision",
+      "validate": { "required": true }
+    },
+    {
+      "label": "Comment",
+      "id": "Field_ApprovalComment",
+      "type": "textarea",
+      "key": "approvalComment"
+    }
+  ],
+  "executionPlatform": "Camunda Cloud",
+  "executionPlatformVersion": "8.8.0",
+  "exporter": { "name": "Camunda Modeler", "version": "5.49.0" },
+  "schemaVersion": 19,
+  "id": "app-access-approval",
+  "type": "default"
+}

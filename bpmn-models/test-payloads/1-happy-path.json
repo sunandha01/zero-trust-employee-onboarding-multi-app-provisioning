@@ -1,0 +1,16 @@
+{
+  "processDefinitionId": "employee-onboarding",
+  "variables": {
+    "employeeId": "EMP-1001",
+    "fullName": "Asha Raman",
+    "email": "asha.raman@example.com",
+    "department": "Engineering",
+    "jobTitle": "Software Engineer",
+    "managerEmail": "manager.one@example.com",
+    "startDate": "2026-12-01",
+    "requestedApps": ["GITHUB", "AWS", "JIRA", "SLACK"],
+    "hardware": { "laptopModel": "MacBook Pro 14", "accessories": ["27-inch monitor", "Headset"] },
+    "shippingAddress": "12 Example Street, Chennai 600001",
+    "verificationSla": "PT45S"
+  }
+}

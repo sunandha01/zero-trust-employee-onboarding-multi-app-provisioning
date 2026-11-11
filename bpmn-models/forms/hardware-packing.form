@@ -1,0 +1,28 @@
+{
+  "components": [
+    {
+      "text": "# Pack hardware\n\n**For:** {{fullName}} ({{employeeId}})\n\n**Laptop:** {{laptopModel}} — asset {{assetTag}}\n\n**Ship to:** {{shippingAddress}}\n\n**Needed by:** {{startDate}}",
+      "id": "Text_Summary",
+      "type": "text"
+    },
+    {
+      "label": "Laptop serial number",
+      "id": "Field_SerialNumber",
+      "type": "textfield",
+      "key": "serialNumber",
+      "validate": { "required": true }
+    },
+    {
+      "label": "Packing notes",
+      "id": "Field_PackingNotes",
+      "type": "textarea",
+      "key": "packingNotes"
+    }
+  ],
+  "executionPlatform": "Camunda Cloud",
+  "executionPlatformVersion": "8.8.0",
+  "exporter": { "name": "Camunda Modeler", "version": "5.49.0" },
+  "schemaVersion": 19,
+  "id": "hardware-packing",
+  "type": "default"
+}

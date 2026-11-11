@@ -1,0 +1,32 @@
+{
+  "components": [
+    {
+      "text": "# Reference check\n\n**Candidate:** {{fullName}} ({{employeeId}})\n\n**Role:** {{jobTitle}}, {{department}}\n\n**Background check:** {{backgroundStatus}} (case {{backgroundCaseId}})",
+      "id": "Text_Summary",
+      "type": "text"
+    },
+    {
+      "label": "Reference check result",
+      "values": [
+        { "label": "References confirmed", "value": "CONFIRMED" },
+        { "label": "References failed", "value": "FAILED" }
+      ],
+      "id": "Field_ReferenceResult",
+      "type": "radio",
+      "key": "referenceResult",
+      "validate": { "required": true }
+    },
+    {
+      "label": "HR notes",
+      "id": "Field_ReferenceNotes",
+      "type": "textarea",
+      "key": "referenceNotes"
+    }
+  ],
+  "executionPlatform": "Camunda Cloud",
+  "executionPlatformVersion": "8.8.0",
+  "exporter": { "name": "Camunda Modeler", "version": "5.49.0" },
+  "schemaVersion": 19,
+  "id": "reference-check",
+  "type": "default"
+}

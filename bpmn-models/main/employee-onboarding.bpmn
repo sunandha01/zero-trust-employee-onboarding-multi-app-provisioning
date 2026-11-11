@@ -1,0 +1,504 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:modeler="http://camunda.org/schema/modeler/1.0"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_EmployeeOnboarding"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="Camunda Modeler" exporterVersion="5.49.0"
+                  modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+
+  <bpmn:process id="employee-onboarding" name="Zero-Trust Employee Onboarding" isExecutable="true">
+
+    <bpmn:startEvent id="Start_OnboardingRequested" name="New hire submitted">
+      <bpmn:outgoing>Flow_ToValidate</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:scriptTask id="Task_ValidateRequest" name="Validate onboarding request (FEEL)">
+      <bpmn:extensionElements>
+        <zeebe:script expression="={&#10;  validationErrors: [&#10;    if matches(employeeId, &#34;^EMP-[0-9]{4}$&#34;) = true then null else &#34;employeeId must look like EMP-1234&#34;,&#10;    if fullName != null and string length(fullName) &gt; 0 then null else &#34;fullName is required&#34;,&#10;    if matches(email, &#34;^[^@ ]+@[^@ ]+[.][^@ ]+$&#34;) = true then null else &#34;email is invalid&#34;,&#10;    if date(startDate) != null then null else &#34;startDate must be YYYY-MM-DD&#34;,&#10;    if count(requestedApps) &gt; 0 and (every a in requestedApps satisfies list contains([&#34;GITHUB&#34;, &#34;AWS&#34;, &#34;JIRA&#34;, &#34;SLACK&#34;], a)) then null else &#34;requestedApps may only contain GITHUB, AWS, JIRA, SLACK&#34;,&#10;    if hardware.laptopModel != null then null else &#34;hardware.laptopModel is required&#34;&#10;  ][item != null],&#10;  requestValid: count(validationErrors) = 0,&#10;  username: if requestValid then lower case(substring before(email, &#34;@&#34;)) else null&#10;}" resultVariable="requestCheck" />
+        <zeebe:ioMapping>
+          <zeebe:output source="=requestCheck.requestValid" target="requestValid" />
+          <zeebe:output source="=requestCheck.validationErrors" target="validationErrors" />
+          <zeebe:output source="=requestCheck.username" target="username" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToValidate</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToRequestValid</bpmn:outgoing>
+    </bpmn:scriptTask>
+
+    <bpmn:exclusiveGateway id="Gateway_RequestValid" name="Request valid?" default="Flow_RequestInvalid">
+      <bpmn:incoming>Flow_ToRequestValid</bpmn:incoming>
+      <bpmn:outgoing>Flow_RequestValid</bpmn:outgoing>
+      <bpmn:outgoing>Flow_RequestInvalid</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:endEvent id="End_RequestRejected" name="Request rejected">
+      <bpmn:incoming>Flow_RequestInvalid</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:parallelGateway id="Gateway_Fork" name="Start verification, IT setup and hardware in parallel">
+      <bpmn:incoming>Flow_RequestValid</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToVerification</bpmn:outgoing>
+      <bpmn:outgoing>Flow_ToApproval</bpmn:outgoing>
+      <bpmn:outgoing>Flow_ToHardware</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <!-- ===== Branch 1: embedded sub-process with error and timer boundary events ===== -->
+    <bpmn:subProcess id="SubProcess_BackgroundVerification" name="Background verification &amp; reference check">
+      <bpmn:incoming>Flow_ToVerification</bpmn:incoming>
+      <bpmn:outgoing>Flow_VerificationToJoin</bpmn:outgoing>
+
+      <bpmn:startEvent id="SP_Start" name="Verification started">
+        <bpmn:outgoing>Flow_SP_ToBackgroundCheck</bpmn:outgoing>
+      </bpmn:startEvent>
+
+      <bpmn:serviceTask id="Task_BackgroundCheck" name="Run background check (REST)" zeebe:modelerTemplate="io.camunda.connectors.HttpJson.v2" zeebe:modelerTemplateVersion="12" zeebe:modelerTemplateIcon="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjAzMzUgOC45OTk5N0MxNy4wMzM1IDEzLjQ0NzUgMTMuNDI4MSAxNy4wNTI5IDguOTgwNjUgMTcuMDUyOUM0LjUzMzE2IDE3LjA1MjkgMC45Mjc3NjUgMTMuNDQ3NSAwLjkyNzc2NSA4Ljk5OTk3QzAuOTI3NzY1IDQuNTUyNDggNC41MzMxNiAwLjk0NzA4MyA4Ljk4MDY1IDAuOTQ3MDgzQzEzLjQyODEgMC45NDcwODMgMTcuMDMzNSA0LjU1MjQ4IDE3LjAzMzUgOC45OTk5N1oiIGZpbGw9IiM1MDU1NjIiLz4KPHBhdGggZD0iTTQuOTMxMjYgMTQuMTU3MUw2Ljc4MTA2IDMuNzE0NzFIMTAuMTM3NUMxMS4xOTE3IDMuNzE0NzEgMTEuOTgyNCAzLjk4MzIzIDEyLjUwOTUgNC41MjAyN0MxMy4wNDY1IDUuMDQ3MzYgMTMuMzE1IDUuNzMzNTggMTMuMzE1IDYuNTc4OTJDMTMuMzE1IDcuNDQ0MTQgMTMuMDcxNCA4LjE1NTIyIDEyLjU4NDEgOC43MTIxNUMxMi4xMDY3IDkuMjU5MTMgMTEuNDU1MyA5LjYzNzA1IDEwLjYyOTggOS44NDU5TDEyLjA2MTkgMTQuMTU3MUgxMC4zMzE1TDkuMDMzNjQgMTAuMDI0OUg3LjI0MzUxTDYuNTEyNTQgMTQuMTU3MUg0LjkzMTI2Wk03LjQ5NzExIDguNTkyODFIOS4yNDI0OEM5Ljk5ODMyIDguNTkyODEgMTAuNTkwMSA4LjQyMzc0IDExLjAxNzcgOC4wODU2MUMxMS40NTUzIDcuNzM3NTMgMTEuNjc0MSA3LjI2NTEzIDExLjY3NDEgNi42Njg0MkMxMS42NzQxIDYuMTkxMDYgMTEuNTI0OSA1LjgxODExIDExLjIyNjUgNS41NDk1OUMxMC45MjgyIDUuMjcxMTMgMTAuNDU1OCA1LjEzMTkgOS44MDkzNiA1LjEzMTlIOC4xMDg3NEw3LjQ5NzExIDguNTkyODFaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4K">
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="io.camunda:http-json:1" retries="3" />
+          <zeebe:ioMapping>
+            <zeebe:input source="apiKey" target="authentication.type" />
+            <zeebe:input source="headers" target="authentication.apiKeyLocation" />
+            <zeebe:input source="X-API-Key" target="authentication.name" />
+            <zeebe:input source="{{secrets.BGV_API_KEY}}" target="authentication.value" />
+            <zeebe:input source="POST" target="method" />
+            <zeebe:input source="http://localhost:8095/api/background-checks" target="url" />
+            <zeebe:input source="false" target="storeResponse" />
+            <zeebe:input source="20" target="connectionTimeoutInSeconds" />
+            <zeebe:input source="20" target="readTimeoutInSeconds" />
+            <zeebe:input source="={employeeId: employeeId, fullName: fullName, email: email}" target="body" />
+            <zeebe:input source="false" target="ignoreNullValues" />
+          </zeebe:ioMapping>
+          <zeebe:taskHeaders>
+            <zeebe:header key="elementTemplateVersion" value="12" />
+            <zeebe:header key="elementTemplateId" value="io.camunda.connectors.HttpJson.v2" />
+            <zeebe:header key="resultExpression" value="={backgroundStatus: response.body.status, backgroundCaseId: response.body.caseId}" />
+            <zeebe:header key="retryBackoff" value="PT5S" />
+          </zeebe:taskHeaders>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_SP_ToBackgroundCheck</bpmn:incoming>
+        <bpmn:outgoing>Flow_SP_ToClear</bpmn:outgoing>
+      </bpmn:serviceTask>
+
+      <bpmn:exclusiveGateway id="Gateway_BackgroundClear" name="Background clear?" default="Flow_SP_Flagged">
+        <bpmn:incoming>Flow_SP_ToClear</bpmn:incoming>
+        <bpmn:outgoing>Flow_SP_Clear</bpmn:outgoing>
+        <bpmn:outgoing>Flow_SP_Flagged</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+
+      <bpmn:endEvent id="SP_ErrorEnd_Flagged" name="Background flagged">
+        <bpmn:incoming>Flow_SP_Flagged</bpmn:incoming>
+        <bpmn:errorEventDefinition id="ErrorDef_Flagged" errorRef="Error_VerificationFailed" />
+      </bpmn:endEvent>
+
+      <bpmn:userTask id="Task_ReferenceCheck" name="HR reference check">
+        <bpmn:extensionElements>
+          <zeebe:userTask />
+          <zeebe:formDefinition formId="reference-check" />
+          <zeebe:assignmentDefinition assignee="demo" candidateGroups="hr" />
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_SP_Clear</bpmn:incoming>
+        <bpmn:outgoing>Flow_SP_ToReferencesOk</bpmn:outgoing>
+      </bpmn:userTask>
+
+      <bpmn:exclusiveGateway id="Gateway_ReferencesOk" name="References confirmed?" default="Flow_SP_ReferencesFailed">
+        <bpmn:incoming>Flow_SP_ToReferencesOk</bpmn:incoming>
+        <bpmn:outgoing>Flow_SP_ReferencesOk</bpmn:outgoing>
+        <bpmn:outgoing>Flow_SP_ReferencesFailed</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+
+      <bpmn:endEvent id="SP_ErrorEnd_References" name="References failed">
+        <bpmn:incoming>Flow_SP_ReferencesFailed</bpmn:incoming>
+        <bpmn:errorEventDefinition id="ErrorDef_References" errorRef="Error_VerificationFailed" />
+      </bpmn:endEvent>
+
+      <bpmn:endEvent id="SP_End_Verified" name="Candidate verified">
+        <bpmn:incoming>Flow_SP_ReferencesOk</bpmn:incoming>
+      </bpmn:endEvent>
+
+      <bpmn:sequenceFlow id="Flow_SP_ToBackgroundCheck" sourceRef="SP_Start" targetRef="Task_BackgroundCheck" />
+      <bpmn:sequenceFlow id="Flow_SP_ToClear" sourceRef="Task_BackgroundCheck" targetRef="Gateway_BackgroundClear" />
+      <bpmn:sequenceFlow id="Flow_SP_Clear" name="CLEAR" sourceRef="Gateway_BackgroundClear" targetRef="Task_ReferenceCheck">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=backgroundStatus = "CLEAR"</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Flow_SP_Flagged" name="otherwise" sourceRef="Gateway_BackgroundClear" targetRef="SP_ErrorEnd_Flagged" />
+      <bpmn:sequenceFlow id="Flow_SP_ToReferencesOk" sourceRef="Task_ReferenceCheck" targetRef="Gateway_ReferencesOk" />
+      <bpmn:sequenceFlow id="Flow_SP_ReferencesOk" name="yes" sourceRef="Gateway_ReferencesOk" targetRef="SP_End_Verified">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=referenceResult = "CONFIRMED"</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Flow_SP_ReferencesFailed" name="otherwise" sourceRef="Gateway_ReferencesOk" targetRef="SP_ErrorEnd_References" />
+    </bpmn:subProcess>
+
+    <bpmn:boundaryEvent id="Boundary_VerificationSla" name="Verification SLA reached" cancelActivity="false" attachedToRef="SubProcess_BackgroundVerification">
+      <bpmn:outgoing>Flow_SlaToReminder</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerDef_VerificationSla">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">=if verificationSla != null then verificationSla else "P3D"</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <bpmn:serviceTask id="Task_NotifyHrOverdue" name="Remind HR on Slack (REST)" zeebe:modelerTemplate="io.camunda.connectors.HttpJson.v2" zeebe:modelerTemplateVersion="12" zeebe:modelerTemplateIcon="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjAzMzUgOC45OTk5N0MxNy4wMzM1IDEzLjQ0NzUgMTMuNDI4MSAxNy4wNTI5IDguOTgwNjUgMTcuMDUyOUM0LjUzMzE2IDE3LjA1MjkgMC45Mjc3NjUgMTMuNDQ3NSAwLjkyNzc2NSA4Ljk5OTk3QzAuOTI3NzY1IDQuNTUyNDggNC41MzMxNiAwLjk0NzA4MyA4Ljk4MDY1IDAuOTQ3MDgzQzEzLjQyODEgMC45NDcwODMgMTcuMDMzNSA0LjU1MjQ4IDE3LjAzMzUgOC45OTk5N1oiIGZpbGw9IiM1MDU1NjIiLz4KPHBhdGggZD0iTTQuOTMxMjYgMTQuMTU3MUw2Ljc4MTA2IDMuNzE0NzFIMTAuMTM3NUMxMS4xOTE3IDMuNzE0NzEgMTEuOTgyNCAzLjk4MzIzIDEyLjUwOTUgNC41MjAyN0MxMy4wNDY1IDUuMDQ3MzYgMTMuMzE1IDUuNzMzNTggMTMuMzE1IDYuNTc4OTJDMTMuMzE1IDcuNDQ0MTQgMTMuMDcxNCA4LjE1NTIyIDEyLjU4NDEgOC43MTIxNUMxMi4xMDY3IDkuMjU5MTMgMTEuNDU1MyA5LjYzNzA1IDEwLjYyOTggOS44NDU5TDEyLjA2MTkgMTQuMTU3MUgxMC4zMzE1TDkuMDMzNjQgMTAuMDI0OUg3LjI0MzUxTDYuNTEyNTQgMTQuMTU3MUg0LjkzMTI2Wk03LjQ5NzExIDguNTkyODFIOS4yNDI0OEM5Ljk5ODMyIDguNTkyODEgMTAuNTkwMSA4LjQyMzc0IDExLjAxNzcgOC4wODU2MUMxMS40NTUzIDcuNzM3NTMgMTEuNjc0MSA3LjI2NTEzIDExLjY3NDEgNi42Njg0MkMxMS42NzQxIDYuMTkxMDYgMTEuNTI0OSA1LjgxODExIDExLjIyNjUgNS41NDk1OUMxMC45MjgyIDUuMjcxMTMgMTAuNDU1OCA1LjEzMTkgOS44MDkzNiA1LjEzMTlIOC4xMDg3NEw3LjQ5NzExIDguNTkyODFaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4K">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="io.camunda:http-json:1" retries="3" />
+        <zeebe:ioMapping>
+          <zeebe:input source="bearer" target="authentication.type" />
+          <zeebe:input source="{{secrets.SLACK_BOT_TOKEN}}" target="authentication.token" />
+          <zeebe:input source="POST" target="method" />
+          <zeebe:input source="http://localhost:8095/api/slack/messages" target="url" />
+          <zeebe:input source="false" target="storeResponse" />
+          <zeebe:input source="20" target="connectionTimeoutInSeconds" />
+          <zeebe:input source="20" target="readTimeoutInSeconds" />
+          <zeebe:input source="={channel: &#34;#hr-onboarding&#34;, text: &#34;Reminder: background verification for &#34; + fullName + &#34; (&#34; + employeeId + &#34;) has passed its SLA.&#34;}" target="body" />
+          <zeebe:input source="false" target="ignoreNullValues" />
+        </zeebe:ioMapping>
+        <zeebe:taskHeaders>
+          <zeebe:header key="elementTemplateVersion" value="12" />
+          <zeebe:header key="elementTemplateId" value="io.camunda.connectors.HttpJson.v2" />
+          <zeebe:header key="resultExpression" value="={slaReminderSent: response.body.ok}" />
+          <zeebe:header key="retryBackoff" value="PT5S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_SlaToReminder</bpmn:incoming>
+      <bpmn:outgoing>Flow_ReminderToEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="End_ReminderSent" name="HR reminded">
+      <bpmn:incoming>Flow_ReminderToEnd</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:boundaryEvent id="Boundary_VerificationFailed" name="Verification failed" attachedToRef="SubProcess_BackgroundVerification">
+      <bpmn:outgoing>Flow_FailedToRevoke</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorDef_VerificationFailed" errorRef="Error_VerificationFailed" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:scriptTask id="Task_RevokeAccess" name="Record cancellation reason (FEEL)">
+      <bpmn:extensionElements>
+        <zeebe:script expression="={onboardingStatus: &#34;CANCELLED&#34;, cancellationReason: if backgroundStatus = &#34;FLAGGED&#34; then &#34;Background check flagged&#34; else &#34;References not confirmed&#34;}" resultVariable="cancellation" />
+        <zeebe:ioMapping>
+          <zeebe:output source="=cancellation.onboardingStatus" target="onboardingStatus" />
+          <zeebe:output source="=cancellation.cancellationReason" target="cancellationReason" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_FailedToRevoke</bpmn:incoming>
+      <bpmn:outgoing>Flow_RevokeToCancelled</bpmn:outgoing>
+    </bpmn:scriptTask>
+
+    <bpmn:endEvent id="End_OnboardingCancelled" name="Onboarding cancelled">
+      <bpmn:incoming>Flow_RevokeToCancelled</bpmn:incoming>
+      <bpmn:terminateEventDefinition id="TerminateDef_Cancelled" />
+    </bpmn:endEvent>
+
+    <!-- ===== Branch 2: parallel multi-instance approval, sequential multi-instance provisioning ===== -->
+    <bpmn:userTask id="Task_AppApproval" name="Security approval per app">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:formDefinition formId="app-access-approval" />
+        <zeebe:assignmentDefinition assignee="demo" candidateGroups="security" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=null" target="approvalDecision" />
+          <zeebe:input source="=null" target="approvalComment" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToApproval</bpmn:incoming>
+      <bpmn:outgoing>Flow_ApprovalToProvision</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics>
+        <bpmn:extensionElements>
+          <zeebe:loopCharacteristics inputCollection="=requestedApps" inputElement="app" outputCollection="appApprovals" outputElement="={app: app, approved: approvalDecision = &#34;APPROVED&#34;, comment: approvalComment}" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="Task_ProvisionAccount" name="Provision app account (REST)" zeebe:modelerTemplate="io.camunda.connectors.HttpJson.v2" zeebe:modelerTemplateVersion="12" zeebe:modelerTemplateIcon="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjAzMzUgOC45OTk5N0MxNy4wMzM1IDEzLjQ0NzUgMTMuNDI4MSAxNy4wNTI5IDguOTgwNjUgMTcuMDUyOUM0LjUzMzE2IDE3LjA1MjkgMC45Mjc3NjUgMTMuNDQ3NSAwLjkyNzc2NSA4Ljk5OTk3QzAuOTI3NzY1IDQuNTUyNDggNC41MzMxNiAwLjk0NzA4MyA4Ljk4MDY1IDAuOTQ3MDgzQzEzLjQyODEgMC45NDcwODMgMTcuMDMzNSA0LjU1MjQ4IDE3LjAzMzUgOC45OTk5N1oiIGZpbGw9IiM1MDU1NjIiLz4KPHBhdGggZD0iTTQuOTMxMjYgMTQuMTU3MUw2Ljc4MTA2IDMuNzE0NzFIMTAuMTM3NUMxMS4xOTE3IDMuNzE0NzEgMTEuOTgyNCAzLjk4MzIzIDEyLjUwOTUgNC41MjAyN0MxMy4wNDY1IDUuMDQ3MzYgMTMuMzE1IDUuNzMzNTggMTMuMzE1IDYuNTc4OTJDMTMuMzE1IDcuNDQ0MTQgMTMuMDcxNCA4LjE1NTIyIDEyLjU4NDEgOC43MTIxNUMxMi4xMDY3IDkuMjU5MTMgMTEuNDU1MyA5LjYzNzA1IDEwLjYyOTggOS44NDU5TDEyLjA2MTkgMTQuMTU3MUgxMC4zMzE1TDkuMDMzNjQgMTAuMDI0OUg3LjI0MzUxTDYuNTEyNTQgMTQuMTU3MUg0LjkzMTI2Wk03LjQ5NzExIDguNTkyODFIOS4yNDI0OEM5Ljk5ODMyIDguNTkyODEgMTAuNTkwMSA4LjQyMzc0IDExLjAxNzcgOC4wODU2MUMxMS40NTUzIDcuNzM3NTMgMTEuNjc0MSA3LjI2NTEzIDExLjY3NDEgNi42Njg0MkMxMS42NzQxIDYuMTkxMDYgMTEuNTI0OSA1LjgxODExIDExLjIyNjUgNS41NDk1OUMxMC45MjgyIDUuMjcxMTMgMTAuNDU1OCA1LjEzMTkgOS44MDkzNiA1LjEzMTlIOC4xMDg3NEw3LjQ5NzExIDguNTkyODFaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4K">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="io.camunda:http-json:1" retries="3" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=null" target="provisionedAccount" />
+          <zeebe:input source="bearer" target="authentication.type" />
+          <zeebe:input source="{{secrets.IAM_API_TOKEN}}" target="authentication.token" />
+          <zeebe:input source="POST" target="method" />
+          <zeebe:input source="http://localhost:8095/api/iam/accounts" target="url" />
+          <zeebe:input source="false" target="storeResponse" />
+          <zeebe:input source="20" target="connectionTimeoutInSeconds" />
+          <zeebe:input source="20" target="readTimeoutInSeconds" />
+          <zeebe:input source="={employeeId: employeeId, username: username, email: email, app: app}" target="body" />
+          <zeebe:input source="false" target="ignoreNullValues" />
+        </zeebe:ioMapping>
+        <zeebe:taskHeaders>
+          <zeebe:header key="elementTemplateVersion" value="12" />
+          <zeebe:header key="elementTemplateId" value="io.camunda.connectors.HttpJson.v2" />
+          <zeebe:header key="resultExpression" value="={provisionedAccount: {app: response.body.app, accountId: response.body.accountId, status: response.body.status}}" />
+          <zeebe:header key="retryBackoff" value="PT5S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ApprovalToProvision</bpmn:incoming>
+      <bpmn:outgoing>Flow_ProvisionToJoin</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true">
+        <bpmn:extensionElements>
+          <zeebe:loopCharacteristics inputCollection="=appApprovals[approved = true].app" inputElement="app" outputCollection="provisionedAccounts" outputElement="=provisionedAccount" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+    </bpmn:serviceTask>
+
+    <!-- ===== Branch 3: reusable call activity ===== -->
+    <bpmn:callActivity id="CallActivity_Hardware" name="Hardware asset procurement &amp; courier">
+      <bpmn:extensionElements>
+        <zeebe:calledElement processId="hardware-procurement" propagateAllChildVariables="false" propagateAllParentVariables="false" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=employeeId" target="employeeId" />
+          <zeebe:input source="=fullName" target="fullName" />
+          <zeebe:input source="=hardware.laptopModel" target="laptopModel" />
+          <zeebe:input source="=hardware.accessories" target="accessories" />
+          <zeebe:input source="=shippingAddress" target="shippingAddress" />
+          <zeebe:input source="=startDate" target="startDate" />
+          <zeebe:output source="={assetTag: assetTag, serialNumber: serialNumber, trackingId: trackingId, courier: courier, status: shipmentStatus}" target="hardwareShipment" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToHardware</bpmn:incoming>
+      <bpmn:outgoing>Flow_HardwareToJoin</bpmn:outgoing>
+    </bpmn:callActivity>
+
+    <!-- ===== Join and welcome ===== -->
+    <bpmn:parallelGateway id="Gateway_Join" name="All branches done">
+      <bpmn:incoming>Flow_VerificationToJoin</bpmn:incoming>
+      <bpmn:incoming>Flow_ProvisionToJoin</bpmn:incoming>
+      <bpmn:incoming>Flow_HardwareToJoin</bpmn:incoming>
+      <bpmn:outgoing>Flow_JoinToWelcome</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:serviceTask id="Task_SlackWelcome" name="Welcome new hire on Slack (REST)" zeebe:modelerTemplate="io.camunda.connectors.HttpJson.v2" zeebe:modelerTemplateVersion="12" zeebe:modelerTemplateIcon="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjAzMzUgOC45OTk5N0MxNy4wMzM1IDEzLjQ0NzUgMTMuNDI4MSAxNy4wNTI5IDguOTgwNjUgMTcuMDUyOUM0LjUzMzE2IDE3LjA1MjkgMC45Mjc3NjUgMTMuNDQ3NSAwLjkyNzc2NSA4Ljk5OTk3QzAuOTI3NzY1IDQuNTUyNDggNC41MzMxNiAwLjk0NzA4MyA4Ljk4MDY1IDAuOTQ3MDgzQzEzLjQyODEgMC45NDcwODMgMTcuMDMzNSA0LjU1MjQ4IDE3LjAzMzUgOC45OTk5N1oiIGZpbGw9IiM1MDU1NjIiLz4KPHBhdGggZD0iTTQuOTMxMjYgMTQuMTU3MUw2Ljc4MTA2IDMuNzE0NzFIMTAuMTM3NUMxMS4xOTE3IDMuNzE0NzEgMTEuOTgyNCAzLjk4MzIzIDEyLjUwOTUgNC41MjAyN0MxMy4wNDY1IDUuMDQ3MzYgMTMuMzE1IDUuNzMzNTggMTMuMzE1IDYuNTc4OTJDMTMuMzE1IDcuNDQ0MTQgMTMuMDcxNCA4LjE1NTIyIDEyLjU4NDEgOC43MTIxNUMxMi4xMDY3IDkuMjU5MTMgMTEuNDU1MyA5LjYzNzA1IDEwLjYyOTggOS44NDU5TDEyLjA2MTkgMTQuMTU3MUgxMC4zMzE1TDkuMDMzNjQgMTAuMDI0OUg3LjI0MzUxTDYuNTEyNTQgMTQuMTU3MUg0LjkzMTI2Wk03LjQ5NzExIDguNTkyODFIOS4yNDI0OEM5Ljk5ODMyIDguNTkyODEgMTAuNTkwMSA4LjQyMzc0IDExLjAxNzcgOC4wODU2MUMxMS40NTUzIDcuNzM3NTMgMTEuNjc0MSA3LjI2NTEzIDExLjY3NDEgNi42Njg0MkMxMS42NzQxIDYuMTkxMDYgMTEuNTI0OSA1LjgxODExIDExLjIyNjUgNS41NDk1OUMxMC45MjgyIDUuMjcxMTMgMTAuNDU1OCA1LjEzMTkgOS44MDkzNiA1LjEzMTlIOC4xMDg3NEw3LjQ5NzExIDguNTkyODFaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4K">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="io.camunda:http-json:1" retries="3" />
+        <zeebe:ioMapping>
+          <zeebe:input source="bearer" target="authentication.type" />
+          <zeebe:input source="{{secrets.SLACK_BOT_TOKEN}}" target="authentication.token" />
+          <zeebe:input source="POST" target="method" />
+          <zeebe:input source="http://localhost:8095/api/slack/messages" target="url" />
+          <zeebe:input source="false" target="storeResponse" />
+          <zeebe:input source="20" target="connectionTimeoutInSeconds" />
+          <zeebe:input source="20" target="readTimeoutInSeconds" />
+          <zeebe:input source="={channel: &#34;#new-joiners&#34;, text: &#34;Welcome &#34; + fullName + &#34; (&#34; + jobTitle + &#34;, &#34; + department + &#34;)! Accounts ready: &#34; + string join(provisionedAccounts.app, &#34;, &#34;) + &#34;. Laptop tracking: &#34; + hardwareShipment.trackingId}" target="body" />
+          <zeebe:input source="false" target="ignoreNullValues" />
+        </zeebe:ioMapping>
+        <zeebe:taskHeaders>
+          <zeebe:header key="elementTemplateVersion" value="12" />
+          <zeebe:header key="elementTemplateId" value="io.camunda.connectors.HttpJson.v2" />
+          <zeebe:header key="resultExpression" value="={welcomeMessageTs: response.body.ts, onboardingStatus: &#34;COMPLETED&#34;}" />
+          <zeebe:header key="retryBackoff" value="PT5S" />
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_JoinToWelcome</bpmn:incoming>
+      <bpmn:outgoing>Flow_WelcomeToEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="End_Onboarded" name="Employee onboarded">
+      <bpmn:incoming>Flow_WelcomeToEnd</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- ===== Sequence flows ===== -->
+    <bpmn:sequenceFlow id="Flow_ToValidate" sourceRef="Start_OnboardingRequested" targetRef="Task_ValidateRequest" />
+    <bpmn:sequenceFlow id="Flow_ToRequestValid" sourceRef="Task_ValidateRequest" targetRef="Gateway_RequestValid" />
+    <bpmn:sequenceFlow id="Flow_RequestValid" name="yes" sourceRef="Gateway_RequestValid" targetRef="Gateway_Fork">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=requestValid = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_RequestInvalid" name="no" sourceRef="Gateway_RequestValid" targetRef="End_RequestRejected" />
+    <bpmn:sequenceFlow id="Flow_ToVerification" sourceRef="Gateway_Fork" targetRef="SubProcess_BackgroundVerification" />
+    <bpmn:sequenceFlow id="Flow_ToApproval" sourceRef="Gateway_Fork" targetRef="Task_AppApproval" />
+    <bpmn:sequenceFlow id="Flow_ToHardware" sourceRef="Gateway_Fork" targetRef="CallActivity_Hardware" />
+    <bpmn:sequenceFlow id="Flow_SlaToReminder" sourceRef="Boundary_VerificationSla" targetRef="Task_NotifyHrOverdue" />
+    <bpmn:sequenceFlow id="Flow_ReminderToEnd" sourceRef="Task_NotifyHrOverdue" targetRef="End_ReminderSent" />
+    <bpmn:sequenceFlow id="Flow_FailedToRevoke" sourceRef="Boundary_VerificationFailed" targetRef="Task_RevokeAccess" />
+    <bpmn:sequenceFlow id="Flow_RevokeToCancelled" sourceRef="Task_RevokeAccess" targetRef="End_OnboardingCancelled" />
+    <bpmn:sequenceFlow id="Flow_ApprovalToProvision" sourceRef="Task_AppApproval" targetRef="Task_ProvisionAccount" />
+    <bpmn:sequenceFlow id="Flow_VerificationToJoin" sourceRef="SubProcess_BackgroundVerification" targetRef="Gateway_Join" />
+    <bpmn:sequenceFlow id="Flow_ProvisionToJoin" sourceRef="Task_ProvisionAccount" targetRef="Gateway_Join" />
+    <bpmn:sequenceFlow id="Flow_HardwareToJoin" sourceRef="CallActivity_Hardware" targetRef="Gateway_Join" />
+    <bpmn:sequenceFlow id="Flow_JoinToWelcome" sourceRef="Gateway_Join" targetRef="Task_SlackWelcome" />
+    <bpmn:sequenceFlow id="Flow_WelcomeToEnd" sourceRef="Task_SlackWelcome" targetRef="End_Onboarded" />
+  </bpmn:process>
+
+  <bpmn:error id="Error_VerificationFailed" name="Verification failed" errorCode="VERIFICATION_FAILED" />
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Onboarding">
+    <bpmndi:BPMNPlane id="BPMNPlane_Onboarding" bpmnElement="employee-onboarding">
+
+      <bpmndi:BPMNShape id="Start_OnboardingRequested_di" bpmnElement="Start_OnboardingRequested">
+        <dc:Bounds x="152" y="482" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="136" y="525" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ValidateRequest_di" bpmnElement="Task_ValidateRequest">
+        <dc:Bounds x="240" y="460" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_RequestValid_di" bpmnElement="Gateway_RequestValid" isMarkerVisible="true">
+        <dc:Bounds x="400" y="475" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="390" y="452" width="72" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_RequestRejected_di" bpmnElement="End_RequestRejected">
+        <dc:Bounds x="407" y="602" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="383" y="645" width="85" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Fork_di" bpmnElement="Gateway_Fork">
+        <dc:Bounds x="490" y="475" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="545" y="530" width="110" height="40" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="SubProcess_BackgroundVerification_di" bpmnElement="SubProcess_BackgroundVerification" isExpanded="true">
+        <dc:Bounds x="600" y="160" width="700" height="240" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SP_Start_di" bpmnElement="SP_Start">
+        <dc:Bounds x="630" y="242" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="615" y="285" width="66" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_BackgroundCheck_di" bpmnElement="Task_BackgroundCheck">
+        <dc:Bounds x="700" y="220" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_BackgroundClear_di" bpmnElement="Gateway_BackgroundClear" isMarkerVisible="true">
+        <dc:Bounds x="850" y="235" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="830" y="205" width="90" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SP_ErrorEnd_Flagged_di" bpmnElement="SP_ErrorEnd_Flagged">
+        <dc:Bounds x="857" y="332" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="900" y="343" width="96" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ReferenceCheck_di" bpmnElement="Task_ReferenceCheck">
+        <dc:Bounds x="950" y="220" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_ReferencesOk_di" bpmnElement="Gateway_ReferencesOk" isMarkerVisible="true">
+        <dc:Bounds x="1100" y="235" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1070" y="198" width="110" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SP_ErrorEnd_References_di" bpmnElement="SP_ErrorEnd_References">
+        <dc:Bounds x="1107" y="332" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1150" y="343" width="88" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SP_End_Verified_di" bpmnElement="SP_End_Verified">
+        <dc:Bounds x="1222" y="242" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1200" y="285" width="80" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Boundary_VerificationSla_di" bpmnElement="Boundary_VerificationSla">
+        <dc:Bounds x="682" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="610" y="110" width="80" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyHrOverdue_di" bpmnElement="Task_NotifyHrOverdue">
+        <dc:Bounds x="760" y="40" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_ReminderSent_di" bpmnElement="End_ReminderSent">
+        <dc:Bounds x="922" y="62" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="907" y="105" width="66" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_VerificationFailed_di" bpmnElement="Boundary_VerificationFailed">
+        <dc:Bounds x="1222" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1130" y="115" width="90" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RevokeAccess_di" bpmnElement="Task_RevokeAccess">
+        <dc:Bounds x="1300" y="40" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_OnboardingCancelled_di" bpmnElement="End_OnboardingCancelled">
+        <dc:Bounds x="1462" y="62" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1440" y="105" width="80" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_AppApproval_di" bpmnElement="Task_AppApproval">
+        <dc:Bounds x="700" y="460" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ProvisionAccount_di" bpmnElement="Task_ProvisionAccount">
+        <dc:Bounds x="950" y="460" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CallActivity_Hardware_di" bpmnElement="CallActivity_Hardware">
+        <dc:Bounds x="700" y="620" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Join_di" bpmnElement="Gateway_Join">
+        <dc:Bounds x="1375" y="475" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1355" y="532" width="90" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SlackWelcome_di" bpmnElement="Task_SlackWelcome">
+        <dc:Bounds x="1480" y="460" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Onboarded_di" bpmnElement="End_Onboarded">
+        <dc:Bounds x="1642" y="482" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1625" y="525" width="70" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Flow_ToValidate_di" bpmnElement="Flow_ToValidate">
+        <di:waypoint x="188" y="500" /><di:waypoint x="240" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToRequestValid_di" bpmnElement="Flow_ToRequestValid">
+        <di:waypoint x="350" y="500" /><di:waypoint x="400" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RequestValid_di" bpmnElement="Flow_RequestValid">
+        <di:waypoint x="450" y="500" /><di:waypoint x="490" y="500" />
+        <bpmndi:BPMNLabel><dc:Bounds x="461" y="482" width="18" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RequestInvalid_di" bpmnElement="Flow_RequestInvalid">
+        <di:waypoint x="425" y="525" /><di:waypoint x="425" y="602" />
+        <bpmndi:BPMNLabel><dc:Bounds x="432" y="556" width="14" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToVerification_di" bpmnElement="Flow_ToVerification">
+        <di:waypoint x="515" y="475" /><di:waypoint x="515" y="280" /><di:waypoint x="600" y="280" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToApproval_di" bpmnElement="Flow_ToApproval">
+        <di:waypoint x="540" y="500" /><di:waypoint x="700" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToHardware_di" bpmnElement="Flow_ToHardware">
+        <di:waypoint x="515" y="525" /><di:waypoint x="515" y="660" /><di:waypoint x="700" y="660" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SP_ToBackgroundCheck_di" bpmnElement="Flow_SP_ToBackgroundCheck">
+        <di:waypoint x="666" y="260" /><di:waypoint x="700" y="260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SP_ToClear_di" bpmnElement="Flow_SP_ToClear">
+        <di:waypoint x="810" y="260" /><di:waypoint x="850" y="260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SP_Clear_di" bpmnElement="Flow_SP_Clear">
+        <di:waypoint x="900" y="260" /><di:waypoint x="950" y="260" />
+        <bpmndi:BPMNLabel><dc:Bounds x="905" y="242" width="35" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SP_Flagged_di" bpmnElement="Flow_SP_Flagged">
+        <di:waypoint x="875" y="285" /><di:waypoint x="875" y="332" />
+        <bpmndi:BPMNLabel><dc:Bounds x="882" y="300" width="48" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SP_ToReferencesOk_di" bpmnElement="Flow_SP_ToReferencesOk">
+        <di:waypoint x="1060" y="260" /><di:waypoint x="1100" y="260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SP_ReferencesOk_di" bpmnElement="Flow_SP_ReferencesOk">
+        <di:waypoint x="1150" y="260" /><di:waypoint x="1222" y="260" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1175" y="242" width="18" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SP_ReferencesFailed_di" bpmnElement="Flow_SP_ReferencesFailed">
+        <di:waypoint x="1125" y="285" /><di:waypoint x="1125" y="332" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1132" y="300" width="48" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SlaToReminder_di" bpmnElement="Flow_SlaToReminder">
+        <di:waypoint x="700" y="142" /><di:waypoint x="700" y="80" /><di:waypoint x="760" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ReminderToEnd_di" bpmnElement="Flow_ReminderToEnd">
+        <di:waypoint x="870" y="80" /><di:waypoint x="922" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FailedToRevoke_di" bpmnElement="Flow_FailedToRevoke">
+        <di:waypoint x="1240" y="142" /><di:waypoint x="1240" y="80" /><di:waypoint x="1300" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RevokeToCancelled_di" bpmnElement="Flow_RevokeToCancelled">
+        <di:waypoint x="1410" y="80" /><di:waypoint x="1462" y="80" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ApprovalToProvision_di" bpmnElement="Flow_ApprovalToProvision">
+        <di:waypoint x="810" y="500" /><di:waypoint x="950" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_VerificationToJoin_di" bpmnElement="Flow_VerificationToJoin">
+        <di:waypoint x="1300" y="280" /><di:waypoint x="1400" y="280" /><di:waypoint x="1400" y="475" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ProvisionToJoin_di" bpmnElement="Flow_ProvisionToJoin">
+        <di:waypoint x="1060" y="500" /><di:waypoint x="1375" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_HardwareToJoin_di" bpmnElement="Flow_HardwareToJoin">
+        <di:waypoint x="810" y="660" /><di:waypoint x="1400" y="660" /><di:waypoint x="1400" y="525" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_JoinToWelcome_di" bpmnElement="Flow_JoinToWelcome">
+        <di:waypoint x="1425" y="500" /><di:waypoint x="1480" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_WelcomeToEnd_di" bpmnElement="Flow_WelcomeToEnd">
+        <di:waypoint x="1590" y="500" /><di:waypoint x="1642" y="500" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
